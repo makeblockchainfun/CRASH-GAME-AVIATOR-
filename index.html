@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aviator Game</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: 'Inter', sans-serif;
+        }
+        .message-box {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.5s ease-in-out;
+            transform: translateX(120%);
+            z-index: 1000;
+        }
+        .message-box.show {
+            transform: translateX(0);
+        }
+        .message-box.error {
+            background-color: #fca5a5;
+            color: #991b1b;
+        }
+        .message-box.success {
+            background-color: #6ee7b7;
+            color: #065f46;
+        }
+        .message-box.info {
+            background-color: #93c5fd;
+            color: #1e40af;
+        }
+        .multiplier-display {
+            transition: all 0.1s ease-out;
+            transform: scale(1.05);
+        }
+        .multiplier-up {
+            color: #4ade80;
+        }
+        .multiplier-down {
+            color: #f87171;
+        }
+        .plane {
+            position: absolute;
+            top: 20%;
+            left: 0;
+            transform: translateX(-100%);
+            transition: left 0.5s linear;
+            font-size: 2rem;
+            z-index: 1;
+        }
+        .game-container {
+            position: relative;
+            overflow: hidden;
+            min-height: 300px;
+        }
+    </style>
+    <!-- Correct Ethers.js CDN import -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-2xl w-full bg-gray-800 rounded-xl shadow-2xl p-6 md:p-8 space-y-6">
+        <h1 class="text-4xl font-bold text-center text-white">Aviator Game</h1>
+        <p class="text-center text-gray-400">Play a provably fair game on the blockchain!</p>
+
+        <!-- Wallet Connection and Admin Panel -->
+        <div class="flex flex-col md:flex-row justify-between items-center bg-gray-700 p-4 rounded-xl shadow-inner">
+            <div id="wallet-info" class="flex-1 space-y-2">
+                <button id="connectWalletBtn" class="w-full md:w-auto px-6 py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition duration-200">
+                    Connect Wallet
+                </button>
+                <p id="accountDisplay" class="text-sm text-gray-300 truncate mt-2">Not connected</p>
+            </div>
+            <div id="admin-panel" class="hidden md:ml-4 mt-4 md:mt-0 flex flex-wrap gap-2 justify-center">
+                <input type="text" id="serverSeedInput" placeholder="Server Seed" class="px-4 py-2 w-full md:w-auto rounded-lg bg-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="commitSeedBtn" class="w-full md:w-auto px-4 py-2 rounded-lg font-semibold bg-purple-600 hover:bg-purple-700 text-white transition duration-200">
+                    Commit Seed
+                </button>
+                <button id="startGameBtn" class="w-full md:w-auto px-4 py-2 rounded-lg font-semibold bg-blue-500 hover:bg-blue-600 text-white transition duration-200">
+                    Start Game
+                </button>
+                <button id="revealSeedBtn" class="w-full md:w-auto px-4 py-2 rounded-lg font-semibold bg-red-600 hover:bg-red-700 text-white transition duration-200">
+                    Reveal Seed
+                </button>
+                <button id="resetRoundBtn" class="w-full md:w-auto px-4 py-2 rounded-lg font-semibold bg-yellow-600 hover:bg-yellow-700 text-white transition duration-200">
+                    Reset Round
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Display and Controls -->
+        <div class="relative bg-gray-900 rounded-xl shadow-xl overflow-hidden p-6 text-center game-container">
+            <div class="plane">✈️</div>
+            <div id="game-info" class="flex justify-between text-gray-400 text-sm mb-4">
+                <p>Round: <span id="roundIdDisplay" class="font-bold text-white">#1</span></p>
+                <p>State: <span id="gameStateDisplay" class="font-bold text-white">BETTING</span></p>
+            </div>
+            <div class="text-green-500 text-6xl font-extrabold tracking-wide mb-6 multiplier-display" id="multiplierDisplay">1.00x</div>
+            <p id="roundStatusMessage" class="text-lg font-semibold mb-4 text-gray-300"></p>
+            
+            <div class="flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div class="flex-1 flex gap-2">
+                    <input type="number" id="betAmountInput" placeholder="ETH Amount" min="0.001" step="0.001" value="0.01" class="flex-1 px-4 py-2 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="placeBetBtn" class="w-1/2 md:w-auto px-6 py-2 rounded-lg font-semibold bg-yellow-500 hover:bg-yellow-600 text-gray-900 transition duration-200">
+                        Place Bet
+                    </button>
+                </div>
+                <div class="flex-1 flex gap-2">
+                    <button id="cashOutBtn" class="flex-1 px-6 py-2 rounded-lg font-semibold bg-green-500 hover:bg-green-600 text-white transition duration-200">
+                        CASH OUT
+                    </button>
+                    <button id="claimPayoutBtn" class="flex-1 px-6 py-2 rounded-lg font-semibold bg-orange-500 hover:bg-orange-600 text-white transition duration-200">
+                        Claim Payout
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bettors List -->
+        <div class="bg-gray-700 p-4 rounded-xl shadow-inner">
+            <h3 class="text-xl font-bold text-white mb-2">Current Bettors</h3>
+            <ul id="bettorsList" class="space-y-1 text-sm text-gray-300">
+                <li>No active bets</li>
+            </ul>
+        </div>
+        
+        <!-- Round History and Event Log -->
+        <div class="bg-gray-700 p-4 rounded-xl shadow-inner">
+            <h3 class="text-xl font-bold text-white mb-2">Round History</h3>
+            <ul id="historyList" class="space-y-1 text-sm text-gray-300">
+                <li>No history yet</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Custom Message Box -->
+    <div id="messageBox" class="message-box"></div>
+
+    <script>
+        // Contract ABI and Address
+        // Added 'startGame' function to the ABI
+        const contractABI = [{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"player","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"BetPlaced","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"player","type":"address"},{"indexed":false,"internalType":"uint256","name":"payoutAmount","type":"uint256"}],"name":"PayoutClaimed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"player","type":"address"},{"indexed":false,"internalType":"uint256","name":"cashoutTime","type":"uint256"}],"name":"PlayerCashedOut","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"ProfitWithdrawn","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"player","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"Refunded","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"roundId","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"seedHash","type":"bytes32"}],"name":"RoundCommitted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"roundId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"crashPoint","type":"uint256"}],"name":"RoundRevealed","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"roundId","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"startTime","type":"uint256"}],"name":"RoundStarted","type":"event"},{"inputs":[],"name":"PRECISION","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"","type":"address"}],"name":"bets","outputs":[{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"bool","name":"cashedOut","type":"bool"},{"internalType":"uint256","name":"cashoutTime","type":"uint256"},{"internalType":"bool","name":"payoutClaimed","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"bettors","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"cashOut","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"claimPayout","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"_seedHash","type":"bytes32"}],"name":"commitSeedHash","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"commitTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"committedHash","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"currentCrashPoint","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"currentState","outputs":[{"internalType":"enum AviatorGame.GameState","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"houseProfit","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"placeBet","outputs":[],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"refund","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"resetRound","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"_serverSeed","type":"string"}],"name":"revealSeedAndPayout","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"revealedServerSeed","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"roundId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"roundStartTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"startGame","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"totalBets","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"withdrawProfit","outputs":[],"stateMutability":"nonpayable","type":"function"}];
+        const contractAddress = "0x335D84155B3a318761c17C8E11f0565b89Cc9564"; // Your contract address
+        
+        // DOM Elements
+        const connectWalletBtn = document.getElementById('connectWalletBtn');
+        const adminPanel = document.getElementById('admin-panel');
+        const commitSeedBtn = document.getElementById('commitSeedBtn');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const revealSeedBtn = document.getElementById('revealSeedBtn');
+        const resetRoundBtn = document.getElementById('resetRoundBtn');
+        const serverSeedInput = document.getElementById('serverSeedInput');
+        const betAmountInput = document.getElementById('betAmountInput');
+        const placeBetBtn = document.getElementById('placeBetBtn');
+        const cashOutBtn = document.getElementById('cashOutBtn');
+        const claimPayoutBtn = document.getElementById('claimPayoutBtn');
+        const multiplierDisplay = document.getElementById('multiplierDisplay');
+        const gameStateDisplay = document.getElementById('gameStateDisplay');
+        const roundIdDisplay = document.getElementById('roundIdDisplay');
+        const bettorsList = document.getElementById('bettorsList');
+        const historyList = document.getElementById('historyList');
+        const messageBox = document.getElementById('messageBox');
+        const plane = document.querySelector('.plane');
+        const roundStatusMessage = document.getElementById('roundStatusMessage');
+        
+        // Game Variables
+        let provider, signer, contract, currentAccount, ownerAddress;
+        let gameInterval;
+        let roundHistory = [];
+        const maxHistoryItems = 10;
+        
+        const gameStateNames = ["BETTING", "COMMITTED", "IN_GAME", "REVEALED"];
+        
+        // Initialize when page loads
+        window.addEventListener('load', init);
+
+        async function init() {
+            try {
+                if (typeof ethers === 'undefined') {
+                    showMessage("The ethers.js library failed to load. Please check your network connection.", 'error');
+                    console.error("Ethers.js library not loaded.");
+                    return;
+                }
+                if (typeof window.ethereum === 'undefined') {
+                    showMessage("Please install MetaMask to play this game.", 'error');
+                    return;
+                }
+                setupEventListeners();
+                await autoConnectWallet();
+            } catch (error) {
+                showMessage(`Initialization failed: ${error.message}`, 'error');
+                console.error("Initialization error:", error);
+            }
+        }
+        
+        // Event Handlers
+        function setupEventListeners() {
+            connectWalletBtn.addEventListener('click', connectWallet);
+            placeBetBtn.addEventListener('click', placeBet);
+            cashOutBtn.addEventListener('click', cashOut);
+            claimPayoutBtn.addEventListener('click', claimPayout);
+            
+            // Admin events
+            commitSeedBtn.addEventListener('click', commitSeedHash);
+            startGameBtn.addEventListener('click', startGame);
+            revealSeedBtn.addEventListener('click', revealSeed);
+            resetRoundBtn.addEventListener('click', resetRound);
+            
+            // Listen for Metamask account changes
+            window.ethereum.on('accountsChanged', handleAccountsChanged);
+            window.ethereum.on('chainChanged', () => window.location.reload());
+        }
+        
+        async function autoConnectWallet() {
+            try {
+                if (!window.ethereum) return;
+                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                if (accounts.length > 0) {
+                    await handleAccountsChanged(accounts);
+                }
+            } catch (error) {
+                console.error("Auto connect error:", error);
+            }
+        }
+
+        async function connectWallet() {
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                await handleAccountsChanged(accounts);
+            } catch (error) {
+                showMessage(`Wallet connection failed: ${error.message}`, 'error');
+                console.error("Wallet connection error:", error);
+            }
+        }
+        
+        async function handleAccountsChanged(accounts) {
+            if (accounts.length === 0) {
+                showMessage('Please connect to MetaMask.', 'error');
+                currentAccount = null;
+                connectWalletBtn.textContent = "Connect Wallet";
+                connectWalletBtn.disabled = false;
+                document.getElementById('accountDisplay').textContent = "Not connected";
+                adminPanel.classList.add('hidden');
+                
+                placeBetBtn.disabled = true;
+                cashOutBtn.disabled = true;
+                claimPayoutBtn.disabled = true;
+            } else if (accounts[0] !== currentAccount) {
+                currentAccount = accounts[0];
+                connectWalletBtn.textContent = "Connected";
+                connectWalletBtn.disabled = true;
+                document.getElementById('accountDisplay').textContent = `Account: ${currentAccount.substring(0, 6)}...${currentAccount.substring(38)}`;
+                
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
+                
+                ownerAddress = await contract.owner();
+                
+                if (currentAccount.toLowerCase() === ownerAddress.toLowerCase()) {
+                    adminPanel.classList.remove('hidden');
+                } else {
+                    adminPanel.classList.add('hidden');
+                }
+                
+                setupContractListeners();
+                await updateUI();
+                
+                placeBetBtn.disabled = false;
+                cashOutBtn.disabled = false;
+                claimPayoutBtn.disabled = false;
+            }
+        }
+
+        function setupContractListeners() {
+            contract.on("RoundStarted", async (roundId, startTime) => {
+                showMessage(`Round ${roundId.toNumber()} has started!`, 'success');
+                await updateUI();
+                startMultiplier(startTime.toNumber());
+            });
+
+            contract.on("RoundRevealed", async (roundId, crashPoint) => {
+                const crashMultiplier = ethers.utils.formatUnits(crashPoint, 4);
+                showMessage(`Round ${roundId.toNumber()} crashed at ${parseFloat(crashMultiplier).toFixed(2)}x!`, 'error');
+                
+                // Add the revealed crash point to the history
+                roundHistory.unshift({ roundId: roundId.toNumber(), crashPoint: parseFloat(crashMultiplier).toFixed(2) });
+                if (roundHistory.length > maxHistoryItems) {
+                    roundHistory.pop();
+                }
+
+                await updateUI();
+                stopMultiplier();
+                crashAnimation(crashMultiplier);
+            });
+
+            contract.on("BetPlaced", async (player, amount) => {
+                showMessage(`Bet placed by ${player.substring(0, 6)}... for ${ethers.utils.formatEther(amount)} ETH.`, 'success');
+                await updateBettorsDisplay();
+            });
+            
+            contract.on("PlayerCashedOut", async (player, cashoutTime) => {
+                showMessage(`${player.substring(0, 6)}... cashed out!`, 'info');
+            });
+            
+            contract.on("PayoutClaimed", async (player, payoutAmount) => {
+                if (player.toLowerCase() === currentAccount.toLowerCase()) {
+                    if (payoutAmount.gt(0)) {
+                        showMessage(`You won and claimed ${ethers.utils.formatEther(payoutAmount)} ETH!`, 'success');
+                    } else {
+                        showMessage(`You lost this round. Better luck next time!`, 'error');
+                    }
+                }
+            });
+        }
+
+        // UI Update Functions
+        async function updateUI() {
+            try {
+                if (!currentAccount) {
+                    gameStateDisplay.textContent = "DISCONNECTED";
+                    roundIdDisplay.textContent = "#-";
+                    multiplierDisplay.textContent = "1.00x";
+                    bettorsList.innerHTML = "<li>No active bets</li>";
+                    stopMultiplier();
+                    resetPlane();
+                    roundStatusMessage.textContent = "";
+                    return;
+                }
+
+                const state = await contract.currentState();
+                const roundId = await contract.roundId();
+                
+                gameStateDisplay.textContent = gameStateNames[state];
+                roundIdDisplay.textContent = `#${roundId.toString()}`;
+                
+                await updateBettorsDisplay();
+                updateHistoryDisplay();
+                
+                const currentState = gameStateNames[state];
+                switch (currentState) {
+                    case "BETTING":
+                        placeBetBtn.disabled = false;
+                        cashOutBtn.disabled = true;
+                        claimPayoutBtn.disabled = true;
+                        // Admin buttons
+                        commitSeedBtn.disabled = false;
+                        startGameBtn.disabled = true;
+                        revealSeedBtn.disabled = true;
+                        resetRoundBtn.disabled = true;
+
+                        multiplierDisplay.textContent = "1.00x";
+                        multiplierDisplay.className = "text-green-500 text-6xl font-extrabold tracking-wide mb-6 multiplier-display";
+                        stopMultiplier();
+                        resetPlane();
+                        roundStatusMessage.textContent = "Place your bets for the next round.";
+                        break;
+                    case "COMMITTED":
+                        placeBetBtn.disabled = true;
+                        cashOutBtn.disabled = true;
+                        claimPayoutBtn.disabled = true;
+                        // Admin buttons
+                        commitSeedBtn.disabled = true;
+                        startGameBtn.disabled = false;
+                        revealSeedBtn.disabled = true;
+                        resetRoundBtn.disabled = true;
+                        roundStatusMessage.textContent = "Waiting for the game to start...";
+                        break;
+                    case "IN_GAME":
+                        placeBetBtn.disabled = true;
+                        cashOutBtn.disabled = false;
+                        claimPayoutBtn.disabled = true;
+                        // Admin buttons
+                        commitSeedBtn.disabled = true;
+                        startGameBtn.disabled = true;
+                        revealSeedBtn.disabled = false;
+                        resetRoundBtn.disabled = true;
+                        const startTime = await contract.roundStartTime();
+                        startMultiplier(startTime.toNumber());
+                        roundStatusMessage.textContent = "The round is in progress! Cash out now.";
+                        break;
+                    case "REVEALED":
+                        placeBetBtn.disabled = false; // Re-enable for the next round
+                        cashOutBtn.disabled = true;
+                        // Admin buttons
+                        commitSeedBtn.disabled = false;
+                        startGameBtn.disabled = true;
+                        revealSeedBtn.disabled = true;
+                        resetRoundBtn.disabled = false;
+
+                        stopMultiplier();
+                        const bet = await contract.bets(currentAccount);
+                        
+                        if (bet.amount.gt(0)) {
+                            // Check if the user won or lost
+                            const roundStartTime = await contract.roundStartTime();
+                            const crashPoint = await contract.currentCrashPoint();
+                            
+                            const cashoutMultiplierInContract = ethers.BigNumber.from(bet.cashoutTime).sub(roundStartTime).gt(0)
+                                ? ethers.BigNumber.from(Math.round(Math.pow(Math.E, 0.04 * (bet.cashoutTime - roundStartTime)) * 10000))
+                                : ethers.BigNumber.from(0);
+
+                            if (bet.cashedOut && cashoutMultiplierInContract.lt(crashPoint)) {
+                                roundStatusMessage.textContent = `You won! Payout at ${ethers.utils.formatUnits(cashoutMultiplierInContract, 4)}x. You can now claim your payout.`;
+                                claimPayoutBtn.disabled = bet.payoutClaimed;
+                            } else {
+                                roundStatusMessage.textContent = `You lost this round. The plane crashed at ${ethers.utils.formatUnits(crashPoint, 4)}x.`;
+                                claimPayoutBtn.disabled = true;
+                            }
+                        } else {
+                            roundStatusMessage.textContent = "The round has ended. Place a bet for the next one.";
+                            claimPayoutBtn.disabled = true;
+                        }
+                        
+                        break;
+                    default:
+                        break;
+                }
+            } catch (error) {
+                showMessage(`UI update error: ${error.message}`, 'error');
+                console.error("UI update error:", error);
+            }
+        }
+        
+        async function updateBettorsDisplay() {
+            if (!currentAccount) return;
+            try {
+                const currentBettors = await contract.bettors();
+                bettorsList.innerHTML = "";
+                
+                if (currentBettors.length === 0) {
+                    bettorsList.innerHTML = "<li>No active bets</li>";
+                    return;
+                }
+                
+                for (const bettor of currentBettors) {
+                    const bet = await contract.bets(bettor);
+                    if (bet.amount.gt(0)) {
+                        const li = document.createElement('li');
+                        li.className = "flex justify-between items-center";
+                        
+                        const addressSpan = document.createElement('span');
+                        addressSpan.textContent = `${bettor.substring(0, 6)}...`;
+                        
+                        const amountSpan = document.createElement('span');
+                        amountSpan.textContent = `${ethers.utils.formatEther(bet.amount)} ETH`;
+                        amountSpan.className = "font-bold";
+                        
+                        const statusSpan = document.createElement('span');
+                        if (bet.cashedOut) {
+                            statusSpan.textContent = "Cashed Out";
+                            statusSpan.className = "text-green-400";
+                        } else {
+                            statusSpan.textContent = "Playing";
+                            statusSpan.className = "text-yellow-400";
+                        }
+                        
+                        li.appendChild(addressSpan);
+                        li.appendChild(amountSpan);
+                        li.appendChild(statusSpan);
+                        
+                        bettorsList.appendChild(li);
+                    }
+                }
+            } catch (error) {
+                console.error("Error updating bettors:", error);
+            }
+        }
+        
+        function updateHistoryDisplay() {
+            historyList.innerHTML = "";
+            if (roundHistory.length === 0) {
+                historyList.innerHTML = "<li>No history yet</li>";
+                return;
+            }
+            
+            roundHistory.forEach((round) => {
+                const li = document.createElement('li');
+                li.textContent = `Round #${round.roundId}: ${round.crashPoint}x`;
+                historyList.appendChild(li);
+            });
+        }
+
+        // Multiplier Functions
+        async function startMultiplier(startTime) {
+            stopMultiplier();
+            resetPlane();
+            
+            gameInterval = setInterval(() => {
+                const timeElapsed = (Date.now() / 1000) - startTime;
+                
+                // Use a realistic exponential multiplier for better visual feedback
+                const multiplierValue = Math.pow(Math.E, 0.04 * timeElapsed);
+                
+                multiplierDisplay.textContent = `${multiplierValue.toFixed(2)}x`;
+                
+                // Animate plane position
+                const planePosition = Math.min(90, Math.log(multiplierValue) * 30);
+                plane.style.left = `${planePosition}%`;
+            }, 100);
+        }
+
+        function stopMultiplier() {
+            if (gameInterval) {
+                clearInterval(gameInterval);
+                gameInterval = null;
+            }
+        }
+        
+        function crashAnimation(crashMultiplier) {
+            multiplierDisplay.textContent = `${parseFloat(crashMultiplier).toFixed(2)}x`;
+            multiplierDisplay.classList.add("text-red-500");
+            multiplierDisplay.classList.remove("text-green-500", "multiplier-up", "multiplier-down");
+            
+            plane.style.transition = "top 2s ease-in, transform 2s ease-in";
+            plane.style.top = "100%";
+            plane.style.transform = "translateX(-100%) rotate(45deg)";
+            
+            setTimeout(() => {
+                resetPlane();
+            }, 2000);
+        }
+        
+        function resetPlane() {
+            plane.style.transition = "left 0.5s linear";
+            plane.style.top = "20%";
+            plane.style.left = "0%";
+            plane.style.transform = "translateX(-100%)";
+        }
+
+        // Player Actions
+        async function placeBet() {
+            if (!currentAccount) {
+                showMessage("Please connect your wallet first.", 'error');
+                return;
+            }
+            try {
+                const amount = ethers.utils.parseEther(betAmountInput.value);
+                const tx = await contract.placeBet({ value: amount });
+                showMessage("Transaction sent. Waiting for confirmation...", 'info');
+                await tx.wait();
+                showMessage("Bet placed successfully! Good luck!", 'success');
+            } catch (error) {
+                showMessage(`Bet failed: ${error.message}`, 'error');
+                console.error("Bet error:", error);
+            }
+        }
+
+        async function cashOut() {
+            if (!currentAccount) {
+                showMessage("Please connect your wallet first.", 'error');
+                return;
+            }
+            try {
+                const tx = await contract.cashOut();
+                showMessage("Transaction sent. Waiting for confirmation...", 'info');
+                await tx.wait();
+                showMessage("Cashed out successfully! Waiting for round to end...", 'success');
+                cashOutBtn.disabled = true; // Disable cash out after success
+            } catch (error) {
+                showMessage(`Cashout failed: ${error.message}`, 'error');
+                console.error("Cashout error:", error);
+            }
+        }
+        
+        async function claimPayout() {
+            if (!currentAccount) {
+                showMessage("Please connect your wallet first.", 'error');
+                return;
+            }
+            try {
+                const tx = await contract.claimPayout();
+                showMessage("Transaction sent. Waiting for confirmation...", 'info');
+                await tx.wait();
+                showMessage("Payout claimed successfully!", 'success');
+            } catch (error) {
+                showMessage(`Payout failed: ${error.message}`, 'error');
+                console.error("Payout error:", error);
+            }
+        }
+
+        // Admin Actions
+        async function commitSeedHash() {
+            try {
+                const seed = serverSeedInput.value;
+                if (!seed) {
+                    showMessage("Please enter a server seed.", 'error');
+                    return;
+                }
+                const seedHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(seed));
+                const tx = await contract.commitSeedHash(seedHash);
+                showMessage("Committing seed...", 'info');
+                await tx.wait();
+                showMessage("Seed committed! Now start the game.", 'success');
+                await updateUI();
+            } catch (error) {
+                showMessage(`Commit seed failed: ${error.message}`, 'error');
+                console.error("Commit seed error:", error);
+            }
+        }
+
+        async function startGame() {
+            try {
+                const tx = await contract.startGame();
+                showMessage("Starting game...", 'info');
+                await tx.wait();
+                showMessage("Game started! Multiplier is now active.", 'success');
+                await updateUI();
+            } catch (error) {
+                showMessage(`Start game failed: ${error.message}`, 'error');
+                console.error("Start game error:", error);
+            }
+        }
+
+        async function revealSeed() {
+            try {
+                const seed = serverSeedInput.value;
+                if (!seed) {
+                    showMessage("Please enter a server seed.", 'error');
+                    return;
+                }
+                const tx = await contract.revealSeedAndPayout(seed);
+                showMessage("Revealing seed and ending round...", 'info');
+                await tx.wait();
+                showMessage("Round ended and crash point revealed!", 'success');
+                await updateUI();
+            } catch (error) {
+                showMessage(`Reveal seed failed: ${error.message}`, 'error');
+                console.error("Reveal seed error:", error);
+            }
+        }
+
+        async function resetRound() {
+            try {
+                // This function assumes a resetRound function exists in the smart contract
+                // that resets the game state to BETTING.
+                const tx = await contract.resetRound();
+                showMessage("Resetting round...", 'info');
+                await tx.wait();
+                showMessage("Round reset successfully! Ready for new bets.", 'success');
+                await updateUI();
+            } catch (error) {
+                showMessage(`Reset round failed: ${error.message}`, 'error');
+                console.error("Reset round error:", error);
+            }
+        }
+
+        // Helper function for custom message box
+        function showMessage(text, type) {
+            messageBox.textContent = text;
+            messageBox.className = `message-box show ${type}`;
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
